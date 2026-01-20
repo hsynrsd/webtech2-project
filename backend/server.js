@@ -1,61 +1,82 @@
 const express = require("express")
 const cors = require("cors")
+const dotenv = require("dotenv")
+const { PrismaClient } = require("@prisma/client")
 
+dotenv.config()
+
+const prisma = new PrismaClient()
 const app = express()
 
 app.use(cors())
 app.use(express.json())
 
-const products = [
-  { id: 1, name: "Coffee Beans 1kg", price: 18.9 },
-  { id: 2, name: "Ceramic Mug", price: 12.5 },
-  { id: 3, name: "Gift Box", price: 29.0 }
-]
-
-const reservations = [
-  {
-    id: 1,
-    name: "Anna",
-    email: "anna@example.com",
-    dateTime: "2026-01-15T18:00",
-    notes: "Table for 2",
-    status: "new"
-  }
-]
-
 app.get("/api/health", (req, res) => {
   res.json({ ok: true })
 })
 
-app.get("/api/products", (req, res) => {
-  res.json(products)
+app.get("/api/products", async (req, res) => {
+  try {
+    const products = await prisma.product.findMany({ orderBy: { id: "asc" } })
+    res.json(products)
+  } catch (e) {
+    console.error(e)
+    res.status(500).json({ error: "Failed to load products" })
+  }
 })
 
-app.get("/api/reservations", (req, res) => {
-  res.json(reservations)
+app.get("/api/reservations", async (req, res) => {
+  try {
+    const reservations = await prisma.reservation.findMany({ orderBy: { id: "desc" } })
+    res.json(reservations)
+  } catch (e) {
+    console.error(e)
+    res.status(500).json({ error: "Failed to load reservations" })
+  }
 })
 
-app.post("/api/reservations", (req, res) => {
-  const { name, email, dateTime, notes } = req.body
+app.post("/api/reservations", async (req, res) => {
+  try {
+    const { name, email, dateTime, notes } = req.body
 
-  if (!name || !email || !dateTime) {
-    return res.status(400).json({ error: "name, email, and dateTime are required" })
+    if (!name || !email || !dateTime) {
+      return res.status(400).json({ error: "name, email, and dateTime are required" })
+    }
+
+    const parsed = new Date(dateTime)
+    if (Number.isNaN(parsed.getTime())) {
+      return res.status(400).json({ error: "dateTime must be a valid datetime string" })
+    }
+
+    const created = await prisma.reservation.create({
+      data: {
+        name,
+        email,
+        dateTime: parsed,
+        notes: notes || "",
+        status: "new"
+      }
+    })
+
+    res.status(201).json(created)
+  } catch (e) {
+    console.error(e)
+    res.status(500).json({ error: "Failed to create reservation" })
   }
-
-  const newReservation = {
-    id: reservations.length + 1,
-    name,
-    email,
-    dateTime,
-    notes: notes || "",
-    status: "new"
-  }
-
-  reservations.push(newReservation)
-  res.status(201).json(newReservation)
 })
 
 const PORT = 3000
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`API running on http://localhost:${PORT}`)
 })
+
+async function shutdown() {
+  try {
+    await prisma.$disconnect()
+  } finally {
+    server.close(() => process.exit(0))
+  }
+}
+
+process.on("SIGINT", shutdown)
+process.on("SIGTERM", shutdown)
