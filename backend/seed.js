@@ -9,6 +9,7 @@ async function main() {
       { name: "Ceramic Mug", price: 12.5, stock: 25 },
       { name: "Gift Box", price: 29.0, stock: 5 }
     ],
+    skipDuplicates: true
   })
 }
 
